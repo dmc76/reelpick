@@ -1,0 +1,795 @@
+<!doctype html>
+<html lang="en-GB">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#171B18">
+<title>ReelPick</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Young+Serif&family=Figtree:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+  tailwind.config = { theme: { extend: {
+    colors: { ink: '#171B18', panel: '#212622', line: '#323A34', paper: '#EDE3D1', dim: '#A8A193', clay: '#C8664A', sage: '#8FA88A' },
+    fontFamily: { display: ['"Young Serif"', 'Georgia', 'serif'], body: ['Figtree', 'system-ui', 'sans-serif'] }
+  } } };
+</script>
+<style>
+  :root { color-scheme: dark; }
+  html, body { height: 100%; background: #171B18; color: #EDE3D1; font-family: Figtree, system-ui, sans-serif; }
+  body { padding-top: env(safe-area-inset-top, 0px); -webkit-tap-highlight-color: transparent; }
+  #root { min-height: 100%; }
+  :focus-visible { outline: 2px solid #C8664A; outline-offset: 2px; border-radius: 6px; }
+
+  .chips { display: flex; gap: 8px; overflow-x: auto; scrollbar-width: none; }
+  .chips::-webkit-scrollbar { display: none; }
+  .chip { white-space: nowrap; padding: 8px 14px; border-radius: 999px; border: 1px solid #323A34; color: #A8A193; font-weight: 500; font-size: .9rem; }
+  .chip-on { background: #EDE3D1; color: #171B18; border-color: #EDE3D1; }
+  .chip-add { border-style: dashed; }
+
+  .tabs { display: flex; border-bottom: 1px solid #323A34; }
+  .tab { flex: 1; padding: 10px 0; font-weight: 600; font-size: .9rem; color: #A8A193; border-bottom: 2px solid transparent; margin-bottom: -1px; }
+  .tab[aria-selected="true"] { color: #EDE3D1; border-color: #C8664A; }
+  .badge { display: inline-grid; place-items: center; min-width: 18px; height: 18px; padding: 0 5px; margin-left: 6px; border-radius: 999px; background: #8FA88A; color: #171B18; font-size: .7rem; font-weight: 700; }
+
+  .tick { width: 28px; height: 28px; border-radius: 999px; border: 2px solid #4A544C; flex-shrink: 0; display: grid; place-items: center; font-size: 14px; font-weight: 700; }
+  .tick-on { background: #8FA88A; border-color: #8FA88A; color: #171B18; }
+  .stars { display: flex; gap: 2px; }
+  .star { color: #4A544C; padding: 2px 3px; line-height: 1; }
+  .star-on { color: #C8664A; }
+  .tag { display: inline-block; margin-top: 3px; font-size: .74rem; font-weight: 600; color: #8FA88A; }
+
+  .pill { background: #C8664A; color: #171B18; font-weight: 700; padding: 8px 14px; border-radius: 999px; font-size: .875rem; }
+  .pill:disabled { opacity: .5; }
+  .pill-quiet { border: 1px solid #323A34; color: #EDE3D1; font-weight: 600; padding: 8px 14px; border-radius: 999px; font-size: .875rem; }
+  .pill-done { color: #8FA88A; font-weight: 600; font-size: .875rem; padding: 8px 6px; }
+  .btn-ghost { color: #A8A193; font-weight: 600; padding: 8px; }
+  .field { width: 100%; background: #171B18; border: 1px solid #323A34; border-radius: 12px; padding: 12px 14px; font-size: 16px; color: #EDE3D1; }
+  .field:focus { outline: 2px solid #C8664A; outline-offset: 1px; }
+
+  .dock { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; padding: 16px 20px calc(14px + env(safe-area-inset-bottom, 0px)); background: linear-gradient(to top, #171B18 72%, rgba(23,27,24,0)); }
+  .pick-btn { flex: 1; background: #C8664A; color: #171B18; font-family: "Young Serif", Georgia, serif; font-size: 1.2rem; padding: 15px; border-radius: 16px; }
+  .pick-btn:disabled { opacity: .45; }
+  .add-btn { background: #212622; border: 1px solid #323A34; color: #EDE3D1; font-weight: 600; padding: 15px 18px; border-radius: 16px; }
+
+  /* The one bold moment: the picked film arrives as a ticket stub */
+  .ticket { background: #EDE3D1; color: #171B18; border-radius: 16px; overflow: hidden; }
+  .stub { position: relative; border-top: 2px dashed rgba(23,27,24,.22); padding: 14px 16px 16px; }
+  .stub::before, .stub::after { content: ''; position: absolute; top: -12px; width: 22px; height: 22px; border-radius: 50%; background: #212622; }
+  .stub::before { left: -11px; }
+  .stub::after { right: -11px; }
+  .reveal { animation: reveal .55s cubic-bezier(.2,.8,.2,1); }
+  @keyframes reveal { from { transform: translateY(28px) rotate(-2.5deg); opacity: 0; } to { transform: none; opacity: 1; } }
+  .sheet { animation: up .22s ease-out; }
+  @keyframes up { from { transform: translateY(40px); opacity: .6; } to { transform: none; opacity: 1; } }
+  @media (prefers-reduced-motion: reduce) { .reveal, .sheet { animation: none; } }
+
+  .pb-safe { padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px)); }
+  .clamp3 { display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.5/babel.min.js"></script>
+
+<script type="text/babel" data-presets="react">
+const { useState, useEffect, useRef, useMemo } = React;
+
+/* ---------- config ---------- */
+const STORE_KEY = 'reelpick:v1';
+const IMG = 'https://image.tmdb.org/t/p/';
+const AUTO_SUGGEST_AFTER = 3; // new films added since the last suggestions before AI runs automatically
+const PROFILE_IDEAS = ['Family films', 'Couple films', 'Dad and son', 'Just me'];
+const RUNTIMES = [[0, 'Any length'], [105, 'Under 1h 45m'], [120, 'Under 2h'], [150, 'Under 2h 30m']];
+
+/* ---------- storage: one swap point for Supabase later ---------- */
+const store = {
+  load() { try { const r = localStorage.getItem(STORE_KEY); return r ? JSON.parse(r) : null; } catch { return null; } },
+  save(d) { try { localStorage.setItem(STORE_KEY, JSON.stringify(d)); } catch {} },
+};
+
+/* ---------- helpers ---------- */
+const uid = () => Math.random().toString(36).slice(2, 10);
+const seed = () => { const id = uid(); return { profiles: [{ id, name: 'Family films' }], activeId: id, films: { [id]: [] }, suggestions: { [id]: [] }, lastSuggestCount: {} }; };
+const typeOf = (f) => f.mediaType || 'movie'; // titles saved before series support are films
+const sameTitle = (a, b) => a.title.trim().toLowerCase() === b.title.trim().toLowerCase();
+const sameFilm = (a, b) => (a.tmdbId && b.tmdbId)
+  ? a.tmdbId === b.tmdbId && typeOf(a) === typeOf(b)
+  : typeOf(a) === typeOf(b) && sameTitle(a, b) && (!a.year || !b.year || a.year === b.year);
+const fmtDate = (iso) => iso ? new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' }) : '';
+const runtimeLabel = (m) => m ? `${Math.floor(m / 60)}h ${m % 60}m` : '';
+const seasonsLabel = (n) => n ? `${n} season${n > 1 ? 's' : ''}` : '';
+const metaLine = (f) => [f.year, typeOf(f) === 'tv' ? seasonsLabel(f.seasons) : runtimeLabel(f.runtime)].filter(Boolean).join(', ');
+const trailerUrl = (f) => f.trailerKey
+  ? `https://www.youtube.com/watch?v=${f.trailerKey}`
+  : `https://www.youtube.com/results?search_query=${encodeURIComponent([f.title, f.year, typeOf(f) === 'tv' ? 'series' : '', 'trailer'].filter(Boolean).join(' '))}`;
+
+async function api(path, opts) {
+  const res = await fetch('/.netlify/functions/' + path, opts);
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error(body.error || `Request failed (${res.status}).`);
+  return body;
+}
+
+/* ---------- small pieces ---------- */
+function Poster({ path, title, size = 'w185', className = '' }) {
+  if (path) return <img src={IMG + size + path} alt="" loading="lazy" className={'object-cover bg-line ' + className} />;
+  return <div aria-hidden="true" className={'grid place-items-center bg-line text-dim font-display text-lg ' + className}>{(title || '?').slice(0, 1).toUpperCase()}</div>;
+}
+
+function Sheet({ title, onClose, children }) {
+  useEffect(() => {
+    const k = (e) => e.key === 'Escape' && onClose();
+    window.addEventListener('keydown', k);
+    return () => window.removeEventListener('keydown', k);
+  }, [onClose]);
+  return (
+    <div className="fixed inset-0 z-40 flex items-end justify-center" role="dialog" aria-modal="true" aria-label={title}>
+      <div className="absolute inset-0 bg-black/60" onClick={onClose} />
+      <div className="sheet relative w-full max-w-lg bg-panel rounded-t-3xl border-t border-line max-h-[88vh] flex flex-col">
+        <div className="flex items-center justify-between px-5 pt-4 pb-2">
+          <h2 className="font-display text-xl">{title}</h2>
+          <button onClick={onClose} className="btn-ghost" aria-label="Close">✕</button>
+        </div>
+        <div className="overflow-y-auto px-5 pb-safe">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+// Opens YouTube (the app on most phones). Falls back to a YouTube search when TMDB has no trailer.
+function TrailerLink({ item, className = 'pill-quiet inline-block text-center' }) {
+  return <a href={trailerUrl(item)} target="_blank" rel="noopener noreferrer" className={className}>{item.trailerKey ? 'Watch trailer' : 'Find trailer on YouTube'}</a>;
+}
+
+/* ---------- star rating: tap a star to set, tap it again to clear ---------- */
+function Stars({ value = 0, onChange, size = 'text-xl', label = 'Your rating' }) {
+  return (
+    <div className="stars" role="radiogroup" aria-label={label}>
+      {[1, 2, 3, 4, 5].map((n) => (
+        <button key={n} role="radio" aria-checked={value === n} aria-label={`${n} star${n > 1 ? 's' : ''}`}
+          onClick={() => onChange(value === n ? 0 : n)} className={`star ${size} ${n <= value ? 'star-on' : ''}`}>★</button>
+      ))}
+    </div>
+  );
+}
+
+/* ---------- film list row ---------- */
+function FilmRow({ film, onToggle, onRemove, onRate }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <li className="border-b border-line">
+      <div className="flex items-center gap-3 py-3">
+        <button onClick={onToggle} className={'tick ' + (film.watched ? 'tick-on' : '')} aria-label={film.watched ? `Mark ${film.title} as not watched` : `Mark ${film.title} as watched`}>{film.watched ? '✓' : ''}</button>
+        <button className="flex items-center gap-3 flex-1 min-w-0 text-left" onClick={() => setOpen((o) => !o)} aria-expanded={open}>
+          <Poster path={film.poster} title={film.title} size="w92" className="w-10 h-[60px] rounded-md shrink-0" />
+          <span className="min-w-0">
+            <span className={'block font-semibold truncate ' + (film.watched ? 'text-paper/80' : '')}>{film.title}</span>
+            <span className="block text-sm text-dim truncate">{metaLine(film) || 'Typed title'}</span>
+            <span className="flex gap-3">
+              {typeOf(film) === 'tv' && <span className="tag">Series</span>}
+              {film.source === 'ai' && <span className="tag">Suggested {fmtDate(film.suggestedOn)}</span>}
+            </span>
+          </span>
+        </button>
+      </div>
+      {film.watched && (
+        <div className="pl-10 -mt-1 pb-3 flex items-center gap-3">
+          <Stars value={film.rating || 0} onChange={onRate} label={`Rate ${film.title}`} />
+          {!film.rating && <span className="text-xs text-dim">Tap to rate</span>}
+        </div>
+      )}
+      {open && (
+        <div className="pb-4 pl-10 text-sm text-dim">
+          {film.genres && film.genres.length > 0 && <p className="mb-1">{film.genres.join(', ')}</p>}
+          {film.overview && <p className="mb-2 text-paper/80 leading-relaxed">{film.overview}</p>}
+          {film.reason && <p className="mb-2 italic">Why it was suggested: {film.reason}</p>}
+          {film.watched && film.watchedOn && <p className="mb-2">Watched {fmtDate(film.watchedOn)}</p>}
+          <div className="flex items-center gap-4 mt-1">
+            <TrailerLink item={film} />
+            <button onClick={onRemove} className="text-clay font-semibold py-1">Remove from list</button>
+          </div>
+        </div>
+      )}
+    </li>
+  );
+}
+
+/* ---------- add: search by title, person or genre ---------- */
+const resultKey = (r) => `${typeOf(r)}-${r.tmdbId}`;
+const kindLabel = (r) => [typeOf(r) === 'tv' ? 'Series' : 'Film', r.year].filter(Boolean).join(', ');
+
+// Debounced fetch helper shared by the search boxes
+function useSearch(path, q) {
+  const [state, setState] = useState({ status: 'idle', results: [], error: '' });
+  useEffect(() => {
+    const term = q.trim();
+    if (term.length < 2) { setState({ status: 'idle', results: [], error: '' }); return; }
+    let live = true;
+    setState((s) => ({ ...s, status: 'loading' }));
+    const t = setTimeout(async () => {
+      try { const r = await api(path + encodeURIComponent(term)); live && setState({ status: 'done', results: r.results || [], error: '' }); }
+      catch (e) { live && setState({ status: 'error', results: [], error: e.message }); }
+    }, 350);
+    return () => { live = false; clearTimeout(t); };
+  }, [q, path]);
+  return state;
+}
+
+// One result. With a single profile, Add puts it straight on that list; otherwise it opens the list chooser.
+function ResultRow({ item, profiles, filmsByProfile, onAdd, getDetails }) {
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(null);
+  const onList = (id) => (filmsByProfile[id] || []).some((f) => sameFilm(f, item));
+  const count = profiles.filter((p) => onList(p.id)).length;
+  const single = profiles.length === 1;
+  const add = async (id) => {
+    if (onList(id) || busy) return;
+    setBusy(id);
+    try { onAdd(await getDetails(item), id); } finally { setBusy(null); }
+  };
+  return (
+    <li className="border-b border-line">
+      <div className="flex items-center gap-3 py-2.5">
+        <Poster path={item.poster} title={item.title} size="w92" className="w-10 h-[60px] rounded-md shrink-0" />
+        <div className="flex-1 min-w-0">
+          <p className="font-semibold truncate">{item.title}</p>
+          <p className="text-sm text-dim truncate">{[kindLabel(item), item.role].filter(Boolean).join(', ')}</p>
+          {!single && count > 0 && <p className="text-xs text-sage">On {count} of {profiles.length} lists</p>}
+        </div>
+        {single
+          ? <button disabled={count > 0 || !!busy} onClick={() => add(profiles[0].id)} className={count ? 'pill-done' : 'pill'}>{count ? 'Added' : busy ? 'Adding…' : 'Add'}</button>
+          : <button onClick={() => setOpen((o) => !o)} aria-expanded={open} className={open ? 'pill-quiet' : 'pill'}>{open ? 'Done' : 'Add to list'}</button>}
+      </div>
+      {open && (
+        <div className="pb-3 pl-[52px] flex flex-wrap gap-2" role="group" aria-label={`Add ${item.title} to a list`}>
+          {profiles.map((p) => {
+            const on = onList(p.id);
+            return (
+              <button key={p.id} disabled={on || busy === p.id} onClick={() => add(p.id)} className={on ? 'chip chip-on' : 'chip'}>
+                {on ? '✓ ' : '+ '}{p.name}{busy === p.id ? '…' : ''}
+              </button>
+            );
+          })}
+        </div>
+      )}
+    </li>
+  );
+}
+
+function ResultList({ items, rowProps, limit }) {
+  return <ul>{items.slice(0, limit || items.length).map((r) => <ResultRow key={resultKey(r)} item={r} {...rowProps} />)}</ul>;
+}
+
+function StatusLine({ status, error, empty }) {
+  if (status === 'loading') return <p className="py-4 text-dim text-sm">Searching…</p>;
+  if (status === 'error') return <p className="py-4 text-clay text-sm">Search isn't available: {error}</p>;
+  if (status === 'done' && empty) return <p className="py-4 text-dim text-sm">{empty}</p>;
+  return null;
+}
+
+function TitleSearch({ rowProps, activeProfile, onAddTyped }) {
+  const [q, setQ] = useState('');
+  const { status, results, error } = useSearch('tmdb?q=', q);
+  const typed = q.trim();
+  const typedOnList = (rowProps.filmsByProfile[activeProfile.id] || []).some((f) => sameTitle(f, { title: typed }));
+  return (
+    <div>
+      <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search films and series" className="field" enterKeyHint="search" autoFocus />
+      {typed && !typedOnList && (
+        <div className="flex items-center gap-2 py-3 border-b border-line text-sm">
+          <span className="flex-1 min-w-0 truncate">Add “{typed}” to {activeProfile.name} as typed:</span>
+          <button onClick={() => { onAddTyped({ title: typed, year: null, mediaType: 'movie' }); setQ(''); }} className="chip">Film</button>
+          <button onClick={() => { onAddTyped({ title: typed, year: null, mediaType: 'tv' }); setQ(''); }} className="chip">Series</button>
+        </div>
+      )}
+      <StatusLine status={status} error={error} empty={!results.length && 'No matches on TMDB. Add it as typed instead.'} />
+      <ResultList items={results} rowProps={rowProps} />
+    </div>
+  );
+}
+
+function PersonSearch({ rowProps }) {
+  const [q, setQ] = useState('');
+  const people = useSearch('tmdb?mode=person&q=', q);
+  const [person, setPerson] = useState(null);
+  const [role, setRole] = useState('cast');
+  const [kind, setKind] = useState('all');
+  const [credits, setCredits] = useState({ status: 'idle', results: [], error: '' });
+  const [shown, setShown] = useState(25);
+
+  useEffect(() => {
+    if (!person) return;
+    let live = true;
+    setCredits({ status: 'loading', results: [], error: '' });
+    setShown(25);
+    api(`tmdb?mode=credits&id=${person.id}&role=${role}`)
+      .then((r) => live && setCredits({ status: 'done', results: r.results || [], error: '' }))
+      .catch((e) => live && setCredits({ status: 'error', results: [], error: e.message }));
+    return () => { live = false; };
+  }, [person, role]);
+
+  if (person) {
+    const list = credits.results.filter((r) => kind === 'all' || typeOf(r) === kind);
+    const hasTv = credits.results.some((r) => typeOf(r) === 'tv');
+    return (
+      <div>
+        <div className="flex items-center gap-3 pb-3">
+          <Poster path={person.photo} title={person.name} size="w185" className="w-12 h-12 rounded-full shrink-0" />
+          <p className="flex-1 font-display text-lg leading-tight">{person.name}</p>
+          <button onClick={() => setPerson(null)} className="btn-ghost text-sm">Change</button>
+        </div>
+        <div className="chips mb-2">
+          <button className={role === 'cast' ? 'chip chip-on' : 'chip'} onClick={() => setRole('cast')}>Acting</button>
+          <button className={role === 'crew' ? 'chip chip-on' : 'chip'} onClick={() => setRole('crew')}>Directing</button>
+        </div>
+        {hasTv && (
+          <div className="chips mb-2">
+            {[['all', 'Films and series'], ['movie', 'Films'], ['tv', 'Series']].map(([k, label]) =>
+              <button key={k} className={kind === k ? 'chip chip-on' : 'chip'} onClick={() => setKind(k)}>{label}</button>)}
+          </div>
+        )}
+        <StatusLine status={credits.status} error={credits.error}
+          empty={!list.length && (role === 'crew' ? `No directing credits for ${person.name}.` : `No acting credits for ${person.name}.`)} />
+        <ResultList items={list} rowProps={rowProps} limit={shown} />
+        {list.length > shown && <button onClick={() => setShown((s) => s + 25)} className="pill-quiet w-full py-3 mt-4">Show more ({list.length - shown} left)</button>}
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search an actor or director" className="field" enterKeyHint="search" autoFocus />
+      <StatusLine status={people.status} error={people.error} empty={!people.results.length && 'No one found by that name.'} />
+      <ul>
+        {people.results.map((x) => (
+          <li key={x.id} className="border-b border-line">
+            <button onClick={() => { setPerson(x); setRole(x.dept === 'Directing' ? 'crew' : 'cast'); setKind('all'); }} className="w-full flex items-center gap-3 py-2.5 text-left">
+              <Poster path={x.photo} title={x.name} size="w185" className="w-11 h-11 rounded-full shrink-0" />
+              <span className="min-w-0">
+                <span className="block font-semibold truncate">{x.name}</span>
+                <span className="block text-sm text-dim truncate">{[x.dept === 'Directing' ? 'Director' : x.dept === 'Acting' ? 'Actor' : x.dept, x.knownFor.join(', ')].filter(Boolean).join(': ')}</span>
+              </span>
+            </button>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function GenreBrowse({ rowProps }) {
+  const [kind, setKind] = useState('movie');
+  const [genres, setGenres] = useState({});
+  const [sel, setSel] = useState([]);
+  const [sort, setSort] = useState('popular');
+  const [res, setRes] = useState({ status: 'idle', results: [], page: 0, totalPages: 1, error: '' });
+  const reqId = useRef(0);
+
+  useEffect(() => {
+    if (genres[kind]) return;
+    api(`tmdb?mode=genres&type=${kind}`)
+      .then((r) => setGenres((g) => ({ ...g, [kind]: r.results })))
+      .catch((e) => setRes((s) => ({ ...s, status: 'error', error: e.message })));
+  }, [kind]);
+
+  const load = async (page) => {
+    const id = ++reqId.current;
+    setRes((s) => ({ ...s, status: 'loading', ...(page === 1 ? { results: [] } : {}) }));
+    try {
+      const r = await api(`tmdb?mode=discover&type=${kind}&genres=${sel.join(',')}&sort=${sort}&page=${page}`);
+      if (id !== reqId.current) return;
+      setRes((s) => ({ status: 'done', error: '', page: r.page, totalPages: r.totalPages, results: page === 1 ? r.results : [...s.results, ...r.results] }));
+    } catch (e) {
+      if (id === reqId.current) setRes((s) => ({ ...s, status: 'error', error: e.message }));
+    }
+  };
+  useEffect(() => {
+    if (!sel.length) { reqId.current++; setRes({ status: 'idle', results: [], page: 0, totalPages: 1, error: '' }); return; }
+    load(1);
+  }, [sel, sort, kind]);
+
+  const toggle = (id) => setSel((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+  const list = genres[kind] || [];
+
+  return (
+    <div>
+      <div className="chips mb-3">
+        <button className={kind === 'movie' ? 'chip chip-on' : 'chip'} onClick={() => { setKind('movie'); setSel([]); }}>Films</button>
+        <button className={kind === 'tv' ? 'chip chip-on' : 'chip'} onClick={() => { setKind('tv'); setSel([]); }}>Series</button>
+      </div>
+      <p className="text-sm text-dim mb-2">Choose one genre, or more to combine them, like Horror and Comedy.</p>
+      <div className="flex flex-wrap gap-2 mb-4">
+        {list.map((g) => <button key={g.id} onClick={() => toggle(g.id)} aria-pressed={sel.includes(g.id)} className={sel.includes(g.id) ? 'chip chip-on' : 'chip'}>{g.name}</button>)}
+      </div>
+      {sel.length > 0 && (
+        <div className="chips mb-1">
+          {[['popular', 'Popular'], ['top', 'Top rated'], ['newest', 'Newest']].map(([k, label]) =>
+            <button key={k} className={sort === k ? 'chip chip-on' : 'chip'} onClick={() => setSort(k)}>{label}</button>)}
+        </div>
+      )}
+      <ResultList items={res.results} rowProps={rowProps} />
+      <StatusLine status={res.status} error={res.error} empty={!res.results.length && 'Nothing matches all of those genres. Try removing one.'} />
+      {res.status === 'done' && res.page < res.totalPages && res.results.length > 0 &&
+        <button onClick={() => load(res.page + 1)} className="pill-quiet w-full py-3 mt-4">Load more</button>}
+    </div>
+  );
+}
+
+function AddSheet({ profiles, filmsByProfile, activeId, onAdd, onClose }) {
+  const [mode, setMode] = useState('title');
+  const cache = useRef({});
+  // Fetch full details (runtime, genres, trailer) once per title, however many lists it goes on
+  const getDetails = async (r) => {
+    if (!r.tmdbId) return r;
+    const k = resultKey(r);
+    if (cache.current[k]) return cache.current[k];
+    try { const d = await api(`tmdb?id=${r.tmdbId}&type=${typeOf(r)}`); cache.current[k] = d; return d; }
+    catch { return r; }
+  };
+  const rowProps = { profiles, filmsByProfile, onAdd, getDetails };
+  const activeProfile = profiles.find((p) => p.id === activeId) || profiles[0];
+
+  return (
+    <Sheet title="Find something to watch" onClose={onClose}>
+      <div className="chips mb-3" role="tablist">
+        {[['title', 'Title'], ['person', 'Actor or director'], ['genre', 'Genre']].map(([k, label]) =>
+          <button key={k} role="tab" aria-selected={mode === k} className={mode === k ? 'chip chip-on' : 'chip'} onClick={() => setMode(k)}>{label}</button>)}
+      </div>
+      {mode === 'title' && <TitleSearch rowProps={rowProps} activeProfile={activeProfile} onAddTyped={(f) => onAdd(f, activeProfile.id)} />}
+      {mode === 'person' && <PersonSearch rowProps={rowProps} />}
+      {mode === 'genre' && <GenreBrowse rowProps={rowProps} />}
+      <p className="text-xs text-dim pt-4">Details, posters and trailers come from TMDB.</p>
+    </Sheet>
+  );
+}
+
+/* ---------- pick a film ---------- */
+function PickSheet({ films, onWatched, onRate, onClose }) {
+  const genres = useMemo(() => [...new Set(films.flatMap((f) => f.genres || []))].sort(), [films]);
+  const hasBoth = films.some((f) => typeOf(f) === 'tv') && films.some((f) => typeOf(f) === 'movie');
+  const [kind, setKind] = useState('all');
+  const [genre, setGenre] = useState('');
+  const [maxRun, setMaxRun] = useState(0);
+  const [phase, setPhase] = useState('setup');
+  const [flash, setFlash] = useState('');
+  const [pick, setPick] = useState(null);
+  const [rating, setRating] = useState(0);
+  const last = useRef(null);
+  const alive = useRef(true);
+  useEffect(() => () => { alive.current = false; }, []);
+
+  const filtering = Boolean(genre || maxRun);
+  const pool = films.filter((f) =>
+    (kind === 'all' || typeOf(f) === kind) &&
+    (!genre || (f.genres || []).includes(genre)) &&
+    (!maxRun || typeOf(f) === 'tv' || (f.runtime && f.runtime <= maxRun)));
+  const missingData = filtering ? films.filter((f) => !f.runtime && !(f.genres || []).length).length : 0;
+
+  const run = () => {
+    if (!pool.length) return;
+    const options = pool.length > 1 ? pool.filter((f) => f.id !== last.current) : pool;
+    const chosen = options[Math.floor(Math.random() * options.length)];
+    last.current = chosen.id;
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (reduce || pool.length === 1) { setPick(chosen); setPhase('result'); return; }
+    setPhase('spin');
+    let i = 0;
+    const tick = () => {
+      if (!alive.current) return;
+      setFlash(pool[Math.floor(Math.random() * pool.length)].title);
+      i += 1;
+      if (i < 14) setTimeout(tick, 50 + i * i * 2);
+      else { setPick(chosen); setPhase('result'); }
+    };
+    tick();
+  };
+
+  return (
+    <Sheet title={phase === 'result' ? 'Tonight you are watching' : phase === 'rate' ? 'Rate it' : 'Pick something to watch'} onClose={onClose}>
+      {phase === 'setup' && (
+        <div>
+          {hasBoth && (
+            <div className="mb-4">
+              <p className="text-sm text-dim mb-2">Watch</p>
+              <div className="chips">
+                {[['all', 'Films and series'], ['movie', 'Films'], ['tv', 'Series']].map(([k, label]) =>
+                  <button key={k} className={kind === k ? 'chip chip-on' : 'chip'} onClick={() => setKind(k)}>{label}</button>)}
+              </div>
+            </div>
+          )}
+          {genres.length > 0 && (
+            <div className="mb-4">
+              <p className="text-sm text-dim mb-2">Genre</p>
+              <div className="chips">
+                <button className={!genre ? 'chip chip-on' : 'chip'} onClick={() => setGenre('')}>Any genre</button>
+                {genres.map((g) => <button key={g} className={genre === g ? 'chip chip-on' : 'chip'} onClick={() => setGenre(g)}>{g}</button>)}
+              </div>
+            </div>
+          )}
+          {kind !== 'tv' && <div className="mb-5">
+            <p className="text-sm text-dim mb-2">Film length</p>
+            <div className="chips">
+              {RUNTIMES.map(([m, label]) => <button key={m} className={maxRun === m ? 'chip chip-on' : 'chip'} onClick={() => setMaxRun(m)}>{label}</button>)}
+            </div>
+          </div>}
+          <p className="text-sm mb-1">{pool.length === 1 ? '1 title to choose from' : `${pool.length} titles to choose from`}</p>
+          {missingData > 0 && <p className="text-xs text-dim mb-1">Typed titles have no genre or length, so filters leave them out.</p>}
+          <button onClick={run} disabled={!pool.length} className="pick-btn w-full mt-4">Pick one</button>
+        </div>
+      )}
+
+      {phase === 'spin' && (
+        <div className="py-14 text-center" aria-live="polite">
+          <p className="font-display text-3xl leading-tight px-2">{flash}</p>
+        </div>
+      )}
+
+      {phase === 'result' && pick && (
+        <div aria-live="polite">
+          <div className="ticket reveal">
+            <div className="flex gap-4 p-4">
+              <Poster path={pick.poster} title={pick.title} size="w342" className="w-24 h-36 rounded-lg shrink-0" />
+              <div className="min-w-0 self-center">
+                <h3 className="font-display text-2xl leading-tight">{pick.title}</h3>
+                <p className="text-sm text-ink/70 mt-1.5">{[typeOf(pick) === 'tv' ? 'Series' : 'Film', metaLine(pick)].filter(Boolean).join(', ')}</p>
+                {pick.genres && pick.genres.length > 0 && <p className="text-sm text-ink/70">{pick.genres.slice(0, 3).join(', ')}</p>}
+              </div>
+            </div>
+            <div className="stub text-sm leading-relaxed text-ink/80">
+              {pick.overview ? <p className="clamp3">{pick.overview}</p> : <p>Grab the popcorn.</p>}
+            </div>
+          </div>
+          <div className="flex gap-3 mt-5">
+            <button onClick={() => { onWatched(pick.id); setPhase('rate'); }} className="pill flex-1 py-3">Mark as watched</button>
+            <button onClick={run} className="pill-quiet flex-1 py-3">Pick again</button>
+          </div>
+          <TrailerLink item={pick} className="pill-quiet block text-center w-full py-3 mt-3" />
+          <button onClick={() => setPhase('setup')} className="btn-ghost w-full mt-2 text-sm">Change filters</button>
+        </div>
+      )}
+      {phase === 'rate' && pick && (
+        <div className="text-center py-4">
+          <p className="font-display text-2xl leading-tight mb-5">How was {pick.title}?</p>
+          <div className="flex justify-center mb-6"><Stars value={rating} onChange={setRating} size="text-4xl" label={`Rate ${pick.title}`} /></div>
+          <div className="flex gap-3">
+            <button disabled={!rating} onClick={() => { onRate(pick.id, rating); onClose(); }} className="pill flex-1 py-3">Save rating</button>
+            <button onClick={onClose} className="pill-quiet flex-1 py-3">Rate later</button>
+          </div>
+        </div>
+      )}
+    </Sheet>
+  );
+}
+
+/* ---------- AI suggestions ---------- */
+function Suggestions({ items, busy, error, onRefresh, onAccept, onDismiss }) {
+  return (
+    <div>
+      <div className="flex items-start justify-between gap-3 py-4">
+        <p className="text-sm text-dim leading-relaxed">Films and series chosen for this profile from what's on your list. New ones also arrive after you add a few titles.</p>
+        <button onClick={onRefresh} disabled={busy} className="pill shrink-0">{busy ? 'Thinking…' : 'Get suggestions'}</button>
+      </div>
+      {error && <p className="text-clay text-sm pb-3">{error}</p>}
+      {items.length === 0 && !busy && !error && <p className="text-dim text-sm py-6">No suggestions waiting. Tap Get suggestions to see some.</p>}
+      <ul>
+        {items.map((s) => (
+          <li key={s.id} className="flex gap-3 py-3 border-b border-line">
+            <Poster path={s.poster} title={s.title} size="w154" className="w-14 h-[84px] rounded-md shrink-0" />
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold">{s.title}</p>
+              <p className="text-sm text-dim">{[typeOf(s) === 'tv' ? 'Series' : 'Film', metaLine(s)].filter(Boolean).join(', ')}</p>
+              {s.reason && <p className="text-sm mt-1 text-paper/80 leading-relaxed">{s.reason}</p>}
+              <p className="text-xs text-dim mt-1">Suggested {fmtDate(s.suggestedOn)}</p>
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 mt-2">
+                <button onClick={() => onAccept(s)} className="pill">Add to list</button>
+                <TrailerLink item={s} className="btn-ghost text-sm" />
+                <button onClick={() => onDismiss(s.id)} className="btn-ghost text-sm">Not for us</button>
+              </div>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/* ---------- profiles ---------- */
+function ProfileSheet({ profile, canDelete, onSave, onDelete, onClose }) {
+  const [name, setName] = useState(profile ? profile.name : '');
+  const [confirm, setConfirm] = useState(false);
+  const save = () => { if (name.trim()) { onSave(name.trim()); onClose(); } };
+  return (
+    <Sheet title={profile ? 'Edit profile' : 'New profile'} onClose={onClose}>
+      <input value={name} onChange={(e) => setName(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && save()} placeholder="Profile name" className="field" autoFocus />
+      {!profile && (
+        <div className="chips mt-3">
+          {PROFILE_IDEAS.map((i) => <button key={i} className="chip" onClick={() => setName(i)}>{i}</button>)}
+        </div>
+      )}
+      <button onClick={save} disabled={!name.trim()} className="pill w-full py-3 mt-5">{profile ? 'Save changes' : 'Create profile'}</button>
+      {profile && canDelete && (
+        confirm
+          ? <div className="mt-4 text-sm"><p className="text-dim mb-2">This deletes the profile and every film on it.</p>
+              <button onClick={() => { onDelete(); onClose(); }} className="text-clay font-semibold py-2 mr-4">Delete profile</button>
+              <button onClick={() => setConfirm(false)} className="btn-ghost">Keep it</button></div>
+          : <button onClick={() => setConfirm(true)} className="text-clay font-semibold text-sm mt-4 py-2">Delete this profile</button>
+      )}
+    </Sheet>
+  );
+}
+
+/* ---------- app ---------- */
+function App() {
+  const [data, setData] = useState(() => store.load() || seed());
+  useEffect(() => store.save(data), [data]);
+  const [tab, setTab] = useState('list');
+  const [sheet, setSheet] = useState(null);
+  const [suggesting, setSuggesting] = useState(false);
+  const [suggestError, setSuggestError] = useState('');
+  const [watchedSort, setWatchedSort] = useState('recent');
+
+  const pid = data.activeId;
+  const profile = data.profiles.find((p) => p.id === pid) || data.profiles[0];
+  const films = data.films[pid] || [];
+  const toWatch = films.filter((f) => !f.watched);
+  const watched = films.filter((f) => f.watched).sort((a, b) => watchedSort === 'rating'
+    ? (b.rating || 0) - (a.rating || 0) || (b.watchedOn || '').localeCompare(a.watchedOn || '')
+    : (b.watchedOn || '').localeCompare(a.watchedOn || ''));
+  const newSuggestions = (data.suggestions[pid] || []).filter((s) => s.status === 'new');
+
+  const update = (fn) => setData((d) => { const n = structuredClone(d); fn(n); return n; });
+
+  const addFilm = (film, extra = {}, profileId = pid) => update((d) => {
+    const list = (d.films[profileId] = d.films[profileId] || []);
+    if (list.some((f) => sameFilm(f, film))) return;
+    list.unshift({ source: 'manual', ...film, ...extra, id: uid(), addedOn: new Date().toISOString(), watched: false });
+  });
+  const toggleWatched = (id) => update((d) => {
+    const f = d.films[pid].find((x) => x.id === id);
+    f.watched = !f.watched; f.watchedOn = f.watched ? new Date().toISOString() : null;
+    if (!f.watched) delete f.rating;
+  });
+  const rateFilm = (id, rating) => update((d) => { d.films[pid].find((x) => x.id === id).rating = rating || undefined; });
+  const removeFilm = (id) => update((d) => { d.films[pid] = d.films[pid].filter((x) => x.id !== id); });
+
+  const suggest = async (auto = false) => {
+    if (suggesting) return;
+    if (!films.length) { if (!auto) setSuggestError('Add a few titles first so suggestions have something to go on.'); return; }
+    setSuggesting(true); setSuggestError('');
+    const forProfile = pid;
+    try {
+      const res = await api('recommend', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          profileName: profile.name,
+          films: films.map((f) => ({ title: f.title, year: f.year, mediaType: typeOf(f), watched: f.watched, rating: f.rating || null })),
+          exclude: (data.suggestions[pid] || []).map((s) => s.title),
+        }),
+      });
+      const now = new Date().toISOString();
+      update((d) => {
+        const list = (d.suggestions[forProfile] = d.suggestions[forProfile] || []);
+        const owned = d.films[forProfile] || [];
+        (res.films || []).forEach((r) => {
+          if (list.some((s) => sameFilm(s, r)) || owned.some((f) => sameFilm(f, r))) return;
+          list.unshift({ ...r, id: uid(), suggestedOn: now, status: 'new' });
+        });
+        d.lastSuggestCount[forProfile] = owned.length;
+      });
+      if (!auto) setTab('suggested');
+    } catch (e) {
+      if (!auto) setSuggestError(e.message);
+    } finally { setSuggesting(false); }
+  };
+
+  const closeAdd = () => {
+    setSheet(null);
+    const sinceLast = films.length - (data.lastSuggestCount[pid] || 0);
+    if (sinceLast >= AUTO_SUGGEST_AFTER) suggest(true);
+  };
+
+  const acceptSuggestion = (s) => {
+    const { id, status, ...film } = s;
+    addFilm(film, { source: 'ai', suggestedOn: s.suggestedOn });
+    update((d) => { d.suggestions[pid].find((x) => x.id === id).status = 'added'; d.lastSuggestCount[pid] = (d.lastSuggestCount[pid] || 0) + 1; });
+  };
+  const dismissSuggestion = (id) => update((d) => { d.suggestions[pid].find((x) => x.id === id).status = 'dismissed'; });
+
+  const switchProfile = (id) => { update((d) => { d.activeId = id; }); setTab('list'); setSuggestError(''); };
+  const saveProfile = (name, id) => update((d) => {
+    if (id) { d.profiles.find((p) => p.id === id).name = name; return; }
+    const nid = uid();
+    d.profiles.push({ id: nid, name }); d.films[nid] = []; d.suggestions[nid] = []; d.activeId = nid;
+  });
+  const deleteProfile = (id) => update((d) => {
+    d.profiles = d.profiles.filter((p) => p.id !== id);
+    delete d.films[id]; delete d.suggestions[id]; delete d.lastSuggestCount[id];
+    d.activeId = d.profiles[0].id;
+  });
+
+  const tabs = [['list', `To watch (${toWatch.length})`], ['watched', `Watched (${watched.length})`], ['suggested', 'Suggested']];
+
+  return (
+    <div className="max-w-lg mx-auto">
+      <header className="px-5 pt-5">
+        <div className="flex items-baseline justify-between">
+          <h1 className="font-display text-3xl">ReelPick</h1>
+          <span className="text-sm text-dim">{profile.name}</span>
+        </div>
+        <nav className="chips mt-4 -mx-5 px-5" aria-label="Profiles">
+          {data.profiles.map((p) => (
+            <button key={p.id} className={p.id === pid ? 'chip chip-on' : 'chip'}
+              onClick={() => (p.id === pid ? setSheet({ type: 'profile', id: p.id }) : switchProfile(p.id))}
+              aria-label={p.id === pid ? `${p.name}, selected. Tap to edit` : p.name}>
+              {p.name}{p.id === pid && <span aria-hidden="true" className="ml-1.5 opacity-60">✎</span>}
+            </button>
+          ))}
+          <button className="chip chip-add" onClick={() => setSheet({ type: 'profile', id: null })}>+ New profile</button>
+        </nav>
+        <div role="tablist" className="tabs mt-4">
+          {tabs.map(([key, label]) => (
+            <button key={key} role="tab" aria-selected={tab === key} className="tab" onClick={() => setTab(key)}>
+              {label}
+              {key === 'suggested' && (suggesting ? <span className="badge">…</span> : newSuggestions.length > 0 && <span className="badge">{newSuggestions.length}</span>)}
+            </button>
+          ))}
+        </div>
+      </header>
+
+      <main className="px-5 pb-40">
+        {tab === 'list' && (toWatch.length === 0
+          ? <div className="py-10">
+              <p className="font-display text-xl mb-2">Nothing on the list yet</p>
+              <p className="text-dim text-sm leading-relaxed mb-5">Add the films and series you want to see. When you can't decide, ReelPick picks one for you.</p>
+              <button onClick={() => setSheet({ type: 'add' })} className="pill py-3 px-5">Add a film or series</button>
+            </div>
+          : <ul>{toWatch.map((f) => <FilmRow key={f.id} film={f} onToggle={() => toggleWatched(f.id)} onRemove={() => removeFilm(f.id)} />)}</ul>)}
+
+        {tab === 'watched' && (watched.length === 0
+          ? <p className="text-dim text-sm py-10">Anything you tick off shows up here, so you can see and rate what you've already watched.</p>
+          : <>
+              <div className="chips pt-4 pb-1">
+                <button className={watchedSort === 'recent' ? 'chip chip-on' : 'chip'} onClick={() => setWatchedSort('recent')}>Most recent</button>
+                <button className={watchedSort === 'rating' ? 'chip chip-on' : 'chip'} onClick={() => setWatchedSort('rating')}>Highest rated</button>
+              </div>
+              <ul>{watched.map((f) => <FilmRow key={f.id} film={f} onToggle={() => toggleWatched(f.id)} onRemove={() => removeFilm(f.id)} onRate={(n) => rateFilm(f.id, n)} />)}</ul>
+            </>)}
+
+        {tab === 'suggested' && (
+          <Suggestions items={newSuggestions} busy={suggesting} error={suggestError}
+            onRefresh={() => suggest(false)} onAccept={acceptSuggestion} onDismiss={dismissSuggestion} />
+        )}
+
+        <p className="text-xs text-dim mt-10">This product uses the TMDB API but is not endorsed or certified by TMDB.</p>
+      </main>
+
+      <div className="dock">
+        <div className="max-w-lg mx-auto flex gap-3">
+          <button className="add-btn" onClick={() => setSheet({ type: 'add' })}>Add</button>
+          <button className="pick-btn" disabled={!toWatch.length} onClick={() => setSheet({ type: 'pick' })}>Pick something</button>
+        </div>
+      </div>
+
+      {sheet && sheet.type === 'add' && <AddSheet profiles={data.profiles} filmsByProfile={data.films} activeId={pid} onAdd={(f, profileId) => addFilm(f, {}, profileId)} onClose={closeAdd} />}
+      {sheet && sheet.type === 'pick' && <PickSheet films={toWatch} onWatched={toggleWatched} onRate={rateFilm} onClose={() => setSheet(null)} />}
+      {sheet && sheet.type === 'profile' && (
+        <ProfileSheet
+          profile={sheet.id ? data.profiles.find((p) => p.id === sheet.id) : null}
+          canDelete={data.profiles.length > 1}
+          onSave={(name) => saveProfile(name, sheet.id)}
+          onDelete={() => deleteProfile(sheet.id)}
+          onClose={() => setSheet(null)} />
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+</script>
+</body>
+</html>
