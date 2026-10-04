@@ -38,6 +38,11 @@ export const detail = (m, mediaType) => ({
   seasons: mediaType === 'tv' ? m.number_of_seasons || null : null,
   genres: (m.genres || []).map((g) => g.name),
   trailerKey: pickTrailer(m.videos),
+  releaseDate: m.release_date || m.first_air_date || null,
+  // Film series (e.g. The Godfather Collection) so sequels can wait their turn
+  collectionId: (m.belongs_to_collection && m.belongs_to_collection.id) || null,
+  collectionName: (m.belongs_to_collection && m.belongs_to_collection.name) || null,
+  collectionChecked: mediaType === 'movie',
 });
 
 export const detailsPath = (id, mediaType) =>

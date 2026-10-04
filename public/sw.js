@@ -1,6 +1,6 @@
 // ReelPick service worker: makes the app installable and lets it open offline.
 // Bump VERSION to force phones to refresh their cached copy.
-const VERSION = 'reelpick-v1';
+const VERSION = 'reelpick-v2';
 const SHELL = ['/', '/index.html', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png'];
 
 self.addEventListener('install', (e) => {

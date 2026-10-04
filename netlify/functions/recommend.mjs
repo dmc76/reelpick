@@ -10,7 +10,8 @@ export default async (req) => {
   const akey = process.env.ANTHROPIC_API_KEY;
   if (!akey) return json({ error: 'ANTHROPIC_API_KEY is not set in Netlify environment variables.' }, 500);
 
-  const { profileName = '', films = [], exclude = [] } = await req.json().catch(() => ({}));
+  const { profileName = '', films = [], exclude = [], kind } = await req.json().catch(() => ({}));
+  const wantTv = kind === 'tv';
   if (!films.length) return json({ error: 'Add a few titles first so suggestions have something to go on.' }, 400);
 
   const list = films
@@ -28,10 +29,10 @@ export default async (req) => {
 On their list:
 ${list}
 
-Suggest ${COUNT} films or TV series they have not listed and may not have thought of. Match the balance of their list: if it is mostly films, suggest mostly films; if it includes series, include some series. Mix well-loved picks with a couple of lesser-known ones. Where titles have ratings, lean towards what they rated 4 or 5 and steer away from what they rated 1 or 2. Match the audience the profile name implies: if it suggests children are watching, keep every suggestion age-appropriate. Do not suggest anything already on the list or any of these earlier suggestions: ${skip}.
+Suggest ${COUNT} ${wantTv ? 'TV series (no films)' : 'films (no TV series)'} they have not listed and may not have thought of. Use everything on the list, films and series alike, to judge their taste. Mix well-loved picks with a couple of lesser-known ones. Where titles have ratings, lean towards what they rated 4 or 5 and steer away from what they rated 1 or 2. If you suggest something from a film series or franchise, suggest the earliest instalment they haven't listed or watched, not a later sequel. Match the audience the profile name implies: if it suggests children are watching, keep every suggestion age-appropriate. Do not suggest anything already on the list or any of these earlier suggestions: ${skip}.
 
 Respond with only a JSON array, no other text, in this shape:
-[{"title": "Title", "year": 1999, "type": "film", "reason": "One sentence linking it to titles on their list."}]
+[{"title": "Title", "year": 1999, "type": "${wantTv ? 'series' : 'film'}", "reason": "One sentence linking it to titles on their list."}]
 Use "type": "series" for TV series. For series, year is the year it first aired.`;
 
   let picks;
@@ -57,7 +58,7 @@ Use "type": "series" for TV series. For series, year is the year it first aired.
   const tkey = process.env.TMDB_API_KEY;
   const out = await Promise.all(
     picks.slice(0, COUNT).map(async (p) => {
-      const mediaType = p.type === 'series' ? 'tv' : 'movie';
+      const mediaType = kind ? (wantTv ? 'tv' : 'movie') : p.type === 'series' ? 'tv' : 'movie';
       const base = { title: String(p.title || '').trim(), year: Number(p.year) || null, mediaType, reason: String(p.reason || '').trim() };
       if (!tkey || !base.title) return base;
       try {
