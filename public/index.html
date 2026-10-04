@@ -643,8 +643,32 @@ function useInstallPrompt() {
     window.addEventListener('appinstalled', onInstalled);
     return () => { window.removeEventListener('beforeinstallprompt', onPrompt); window.removeEventListener('appinstalled', onInstalled); };
   }, []);
-  const install = async () => { if (!prompt) return; prompt.prompt(); await prompt.userChoice.catch(() => {}); setPrompt(null); };
+  const install = async () => { if (!prompt) return false; prompt.prompt(); await prompt.userChoice.catch(() => {}); setPrompt(null); return true; };
   return [Boolean(prompt), install];
+}
+
+// Already running as an installed app?
+const isInstalled = () => window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+const isIOS = () => /iphone|ipad|ipod/i.test(navigator.userAgent);
+const inAppBrowser = () => /FBAN|FBAV|Instagram|Line\/|wv\)|GSA\//i.test(navigator.userAgent);
+
+// Shown when the browser doesn't offer its own install prompt (most phones, iPhones always)
+function InstallHelp({ onClose }) {
+  return (
+    <Sheet title="Install ReelPick" onClose={onClose}>
+      <div className="text-sm leading-relaxed space-y-4 pb-2">
+        {inAppBrowser() && <p className="text-clay">You're in an in-app browser. Open this page in Chrome, Samsung Internet or Safari first.</p>}
+        {isIOS()
+          ? <p>In Safari, tap the <strong>Share</strong> button, then <strong>Add to Home Screen</strong>.</p>
+          : <>
+              <p><strong>Chrome:</strong> tap the <strong>⋮</strong> menu, then <strong>Add to Home screen</strong> or <strong>Install app</strong>.</p>
+              <p><strong>Samsung Internet:</strong> tap the <strong>☰</strong> menu, then <strong>Add page to</strong> and <strong>Home screen</strong>. You may also see an install icon in the address bar.</p>
+              <p className="text-dim">If you opened ReelPick from a link in another app, choose "Open in Chrome" or "Open in browser" first.</p>
+            </>}
+        <button onClick={onClose} className="pill w-full py-3">Got it</button>
+      </div>
+    </Sheet>
+  );
 }
 
 /* ---------- app ---------- */
@@ -774,8 +798,8 @@ function App() {
       <header className="px-5 pt-5">
         <div className="flex items-baseline justify-between">
           <h1 className="font-display text-3xl">ReelPick</h1>
-          {canInstall
-            ? <button onClick={install} className="pill-quiet text-sm">Install app</button>
+          {!isInstalled() && (canInstall || window.innerWidth < 900)
+            ? <button onClick={async () => { if (!(await install())) setSheet({ type: 'install' }); }} className="pill-quiet text-sm">Install app</button>
             : <span className="text-sm text-dim">{profile.name}</span>}
         </div>
         <nav className="chips mt-4 -mx-5 px-5" aria-label="Profiles">
@@ -838,6 +862,7 @@ function App() {
 
       {sheet && sheet.type === 'add' && <AddSheet profiles={data.profiles} filmsByProfile={data.films} activeId={pid} view={view} onAdd={(f, profileId) => addFilm(f, {}, profileId)} onClose={closeAdd} />}
       {sheet && sheet.type === 'pick' && <PickSheet films={toWatch} kind={view} onWatched={toggleWatched} onRate={rateFilm} onClose={() => setSheet(null)} />}
+      {sheet && sheet.type === 'install' && <InstallHelp onClose={() => setSheet(null)} />}
       {sheet && sheet.type === 'profile' && (
         <ProfileSheet
           profile={sheet.id ? data.profiles.find((p) => p.id === sheet.id) : null}
