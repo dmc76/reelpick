@@ -24,3 +24,10 @@ Film and series picker: watchlists per profile, a random pick with optional filt
 - AI suggestions run automatically once 3 new films have been added since the last batch
   (`AUTO_SUGGEST_AFTER`), or on demand from the Suggested tab.
 - TMDB's terms ask for their logo alongside the attribution line in the footer; add it before sharing publicly.
+
+## Installing on a phone
+The app is a PWA (manifest, service worker and icons are in `public`).
+- Android (Chrome or Samsung Internet): open the site and tap "Install app" in the header, or use the browser menu > Add to Home screen / Install app.
+- iPhone (Safari): Share > Add to Home Screen.
+Your lists live on the device, so they open offline; search and suggestions need a connection.
+After changing the app, bump `VERSION` in `public/sw.js` if a phone keeps showing the old version.

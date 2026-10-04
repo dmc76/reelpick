@@ -4,6 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#171B18">
+<link rel="manifest" href="/manifest.webmanifest">
+<link rel="icon" type="image/png" sizes="32x32" href="/icons/favicon-32.png">
+<link rel="apple-touch-icon" href="/icons/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="ReelPick">
 <title>ReelPick</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -623,8 +630,23 @@ function ProfileSheet({ profile, canDelete, onSave, onDelete, onClose }) {
   );
 }
 
+/* ---------- install to home screen ---------- */
+function useInstallPrompt() {
+  const [prompt, setPrompt] = useState(null);
+  useEffect(() => {
+    const onPrompt = (e) => { e.preventDefault(); setPrompt(e); };
+    const onInstalled = () => setPrompt(null);
+    window.addEventListener('beforeinstallprompt', onPrompt);
+    window.addEventListener('appinstalled', onInstalled);
+    return () => { window.removeEventListener('beforeinstallprompt', onPrompt); window.removeEventListener('appinstalled', onInstalled); };
+  }, []);
+  const install = async () => { if (!prompt) return; prompt.prompt(); await prompt.userChoice.catch(() => {}); setPrompt(null); };
+  return [Boolean(prompt), install];
+}
+
 /* ---------- app ---------- */
 function App() {
+  const [canInstall, install] = useInstallPrompt();
   const [data, setData] = useState(() => store.load() || seed());
   useEffect(() => store.save(data), [data]);
   const [tab, setTab] = useState('list');
@@ -719,7 +741,9 @@ function App() {
       <header className="px-5 pt-5">
         <div className="flex items-baseline justify-between">
           <h1 className="font-display text-3xl">ReelPick</h1>
-          <span className="text-sm text-dim">{profile.name}</span>
+          {canInstall
+            ? <button onClick={install} className="pill-quiet text-sm">Install app</button>
+            : <span className="text-sm text-dim">{profile.name}</span>}
         </div>
         <nav className="chips mt-4 -mx-5 px-5" aria-label="Profiles">
           {data.profiles.map((p) => (
@@ -790,6 +814,10 @@ function App() {
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('/sw.js').catch(() => {}));
+}
 </script>
 </body>
 </html>

@@ -1,0 +1,16 @@
+{
+  "name": "ReelPick",
+  "short_name": "ReelPick",
+  "description": "Watchlists for every profile, a random pick when you can't decide, and AI suggestions.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#171B18",
+  "theme_color": "#171B18",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
