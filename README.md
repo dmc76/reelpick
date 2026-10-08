@@ -31,3 +31,4 @@ The app is a PWA (manifest, service worker and icons are in `public`).
 - iPhone (Safari): Share > Add to Home Screen.
 Your lists live on the device, so they open offline; search and suggestions need a connection.
 After changing the app, bump `VERSION` in `public/sw.js` if a phone keeps showing the old version.
+
