@@ -104,7 +104,7 @@ const store = {
 
 /* ---------- helpers ---------- */
 const uid = () => Math.random().toString(36).slice(2, 10);
-const seed = () => { const id = uid(); return { profiles: [{ id, name: 'Family films' }], activeId: id, films: { [id]: [] }, suggestions: { [id]: [] }, lastSuggestCount: {} }; };
+const seed = () => { const id = uid(); return { profiles: [{ id, name: 'Family films', c: Date.now() }], activeId: id, films: { [id]: [] }, suggestions: { [id]: [] }, lastSuggestCount: {} }; };
 const typeOf = (f) => f.mediaType || 'movie'; // titles saved before series support are films
 const sameTitle = (a, b) => a.title.trim().toLowerCase() === b.title.trim().toLowerCase();
 const sameFilm = (a, b) => (a.tmdbId && b.tmdbId)
@@ -466,7 +466,7 @@ function AddSheet({ profiles, filmsByProfile, activeId, view, onAdd, onClose }) 
 }
 
 /* ---------- pick a film ---------- */
-function PickSheet({ films, kind, onWatched, onRate, onClose }) {
+function PickSheet({ films, kind, shortlist, setShortlist, onWatched, onRate, onClose }) {
   const genres = useMemo(() => [...new Set(films.flatMap((f) => f.genres || []))].sort(), [films]);
   const noun = kind === 'tv' ? 'series' : 'film';
   const [genre, setGenre] = useState('');
@@ -475,6 +475,8 @@ function PickSheet({ films, kind, onWatched, onRate, onClose }) {
   const [flash, setFlash] = useState('');
   const [pick, setPick] = useState(null);
   const [rating, setRating] = useState(0);
+  const [mode, setMode] = useState(shortlist.length ? 'short' : 'all');
+  const [find, setFind] = useState('');
   const last = useRef(null);
   const alive = useRef(true);
   useEffect(() => () => { alive.current = false; }, []);
@@ -482,10 +484,14 @@ function PickSheet({ films, kind, onWatched, onRate, onClose }) {
   const filtering = Boolean(genre || maxRun);
   const eligible = firstInSeries(films);
   const waiting = films.length - eligible.length;
-  const pool = eligible.filter((f) =>
+  // Shortlist: you choose exactly which titles go in the hat (sequel order doesn't apply, you've chosen them)
+  const listed = films.filter((f) => shortlist.includes(f.id));
+  const toggleShort = (id) => setShortlist((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+  const shown = films.filter((f) => !find.trim() || f.title.toLowerCase().includes(find.trim().toLowerCase()));
+  const pool = mode === 'short' ? listed : eligible.filter((f) =>
     (!genre || (f.genres || []).includes(genre)) &&
     (!maxRun || typeOf(f) === 'tv' || (f.runtime && f.runtime <= maxRun)));
-  const missingData = filtering ? films.filter((f) => !f.runtime && !(f.genres || []).length).length : 0;
+  const missingData = filtering && mode === 'all' ? films.filter((f) => !f.runtime && !(f.genres || []).length).length : 0;
 
   const run = () => {
     if (!pool.length) return;
@@ -510,7 +516,35 @@ function PickSheet({ films, kind, onWatched, onRate, onClose }) {
     <Sheet title={phase === 'result' ? 'Tonight you are watching' : phase === 'rate' ? 'Rate it' : `Pick a ${noun}`} onClose={onClose}>
       {phase === 'setup' && (
         <div>
-          {genres.length > 0 && (
+          <div className="seg mb-4" role="group" aria-label="Pick from">
+            <button aria-pressed={mode === 'all'} onClick={() => setMode('all')}>Whole list</button>
+            <button aria-pressed={mode === 'short'} onClick={() => setMode('short')}>Shortlist{shortlist.length ? ` (${listed.length})` : ''}</button>
+          </div>
+          {mode === 'short' && (
+            <div className="mb-2">
+              <p className="text-sm text-dim mb-2">Tick the {kind === 'tv' ? 'series' : 'films'} you're deciding between.</p>
+              {films.length > 8 && <input value={find} onChange={(e) => setFind(e.target.value)} placeholder="Filter your list" className="field mb-2" />}
+              <ul className="max-h-[42vh] overflow-y-auto -mx-1 px-1">
+                {shown.map((f) => {
+                  const on = shortlist.includes(f.id);
+                  return (
+                    <li key={f.id}>
+                      <button onClick={() => toggleShort(f.id)} aria-pressed={on} className="w-full flex items-center gap-3 py-2 border-b border-line text-left">
+                        <span className={'tick ' + (on ? 'tick-on' : '')} aria-hidden="true">{on ? '✓' : ''}</span>
+                        <Poster path={f.poster} title={f.title} size="w92" className="w-8 h-12 rounded shrink-0" />
+                        <span className="min-w-0">
+                          <span className="block font-semibold truncate">{f.title}</span>
+                          <span className="block text-xs text-dim truncate">{metaLine(f)}</span>
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+              {listed.length > 0 && <button onClick={() => setShortlist([])} className="btn-ghost text-sm pl-0 mt-1">Clear shortlist</button>}
+            </div>
+          )}
+          {mode === 'all' && genres.length > 0 && (
             <div className="mb-4">
               <p className="text-sm text-dim mb-2">Genre</p>
               <div className="chips">
@@ -519,16 +553,16 @@ function PickSheet({ films, kind, onWatched, onRate, onClose }) {
               </div>
             </div>
           )}
-          {kind !== 'tv' && <div className="mb-5">
+          {mode === 'all' && kind !== 'tv' && <div className="mb-5">
             <p className="text-sm text-dim mb-2">Length</p>
             <div className="chips">
               {RUNTIMES.map(([m, label]) => <button key={m} className={maxRun === m ? 'chip chip-on' : 'chip'} onClick={() => setMaxRun(m)}>{label}</button>)}
             </div>
           </div>}
-          <p className="text-sm mb-1">{pool.length === 1 ? `1 ${noun} to choose from` : `${pool.length} ${kind === 'tv' ? 'series' : 'films'} to choose from`}</p>
-          {waiting > 0 && <p className="text-xs text-dim mb-1">{waiting === 1 ? '1 sequel is' : `${waiting} sequels are`} waiting until you've watched the earlier film.</p>}
+          {mode === 'all' && <p className="text-sm mb-1">{pool.length === 1 ? `1 ${noun} to choose from` : `${pool.length} ${kind === 'tv' ? 'series' : 'films'} to choose from`}</p>}
+          {mode === 'all' && waiting > 0 && <p className="text-xs text-dim mb-1">{waiting === 1 ? '1 sequel is' : `${waiting} sequels are`} waiting until you've watched the earlier film.</p>}
           {missingData > 0 && <p className="text-xs text-dim mb-1">Typed titles have no genre or length, so filters leave them out.</p>}
-          <button onClick={run} disabled={!pool.length} className="pick-btn w-full mt-4">Pick a {noun}</button>
+          <button onClick={run} disabled={mode === 'short' ? pool.length < 2 : !pool.length} className="pick-btn w-full mt-4">{mode === 'short' ? (pool.length < 2 ? 'Tick at least 2' : `Pick from these ${pool.length}`) : `Pick a ${noun}`}</button>
         </div>
       )}
 
@@ -559,7 +593,7 @@ function PickSheet({ films, kind, onWatched, onRate, onClose }) {
             <button onClick={run} className="pill-quiet flex-1 py-3">Pick again</button>
           </div>
           <TrailerLink item={pick} className="pill-quiet block text-center w-full py-3 mt-3" />
-          <button onClick={() => setPhase('setup')} className="btn-ghost w-full mt-2 text-sm">Change filters</button>
+          <button onClick={() => setPhase('setup')} className="btn-ghost w-full mt-2 text-sm">{mode === 'short' ? 'Change shortlist' : 'Change filters'}</button>
         </div>
       )}
       {phase === 'rate' && pick && (
@@ -681,6 +715,7 @@ function App() {
   const [suggesting, setSuggesting] = useState(false);
   const [suggestError, setSuggestError] = useState('');
   const [watchedSort, setWatchedSort] = useState('recent');
+  const [shortlists, setShortlists] = useState({});
 
   const pid = data.activeId;
   const profile = data.profiles.find((p) => p.id === pid) || data.profiles[0];
@@ -782,7 +817,7 @@ function App() {
   const saveProfile = (name, id) => update((d) => {
     if (id) { d.profiles.find((p) => p.id === id).name = name; return; }
     const nid = uid();
-    d.profiles.push({ id: nid, name }); d.films[nid] = []; d.suggestions[nid] = []; d.activeId = nid;
+    d.profiles.push({ id: nid, name, c: Date.now() }); d.films[nid] = []; d.suggestions[nid] = []; d.activeId = nid;
   });
   const deleteProfile = (id) => update((d) => {
     d.profiles = d.profiles.filter((p) => p.id !== id);
@@ -796,7 +831,7 @@ function App() {
   return (
     <div className="max-w-lg mx-auto">
       <header className="px-5 pt-5">
-        <div className="flex items-baseline justify-between">
+        <div className="flex items-center justify-between gap-3">
           <h1 className="font-display text-3xl">ReelPick</h1>
           {!isInstalled() && (canInstall || window.innerWidth < 900)
             ? <button onClick={async () => { if (!(await install())) setSheet({ type: 'install' }); }} className="pill-quiet text-sm">Install app</button>
@@ -861,7 +896,10 @@ function App() {
       </div>
 
       {sheet && sheet.type === 'add' && <AddSheet profiles={data.profiles} filmsByProfile={data.films} activeId={pid} view={view} onAdd={(f, profileId) => addFilm(f, {}, profileId)} onClose={closeAdd} />}
-      {sheet && sheet.type === 'pick' && <PickSheet films={toWatch} kind={view} onWatched={toggleWatched} onRate={rateFilm} onClose={() => setSheet(null)} />}
+      {sheet && sheet.type === 'pick' && <PickSheet films={toWatch} kind={view}
+        shortlist={(shortlists[`${pid}:${view}`] || []).filter((id) => toWatch.some((f) => f.id === id))}
+        setShortlist={(fn) => setShortlists((s) => { const k = `${pid}:${view}`; const cur = (s[k] || []).filter((id) => toWatch.some((f) => f.id === id)); return { ...s, [k]: typeof fn === 'function' ? fn(cur) : fn }; })}
+        onWatched={toggleWatched} onRate={rateFilm} onClose={() => setSheet(null)} />}
       {sheet && sheet.type === 'install' && <InstallHelp onClose={() => setSheet(null)} />}
       {sheet && sheet.type === 'profile' && (
         <ProfileSheet
