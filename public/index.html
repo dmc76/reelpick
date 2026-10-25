@@ -237,43 +237,133 @@ function useSearch(path, q) {
   return state;
 }
 
-// One result. With a single profile, Add puts it straight on that list; otherwise it opens the list chooser.
-function ResultRow({ item, profiles, filmsByProfile, onAdd, getDetails }) {
-  const [open, setOpen] = useState(false);
+// Add-to-list buttons, shared by search results and the details screen
+function useListAdder(item, { profiles, filmsByProfile, onAdd, getDetails }) {
   const [busy, setBusy] = useState(null);
   const onList = (id) => (filmsByProfile[id] || []).some((f) => sameFilm(f, item));
-  const count = profiles.filter((p) => onList(p.id)).length;
-  const single = profiles.length === 1;
   const add = async (id) => {
     if (onList(id) || busy) return;
     setBusy(id);
     try { onAdd(await getDetails(item), id); } finally { setBusy(null); }
   };
+  return { busy, onList, add, count: profiles.filter((p) => onList(p.id)).length };
+}
+
+function ListChips({ item, profiles, adder }) {
+  return (
+    <div className="flex flex-wrap gap-2" role="group" aria-label={`Add ${item.title} to a list`}>
+      {profiles.map((p) => {
+        const on = adder.onList(p.id);
+        return (
+          <button key={p.id} disabled={on || adder.busy === p.id} onClick={() => adder.add(p.id)} className={on ? 'chip chip-on' : 'chip'}>
+            {on ? '✓ ' : '+ '}{p.name}{adder.busy === p.id ? '…' : ''}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// Full details for a search result: overview, cast, rating, trailer, and add to list
+function DetailView({ item, rowProps, onClose }) {
+  const [info, setInfo] = useState(item);
+  const [loading, setLoading] = useState(Boolean(item.tmdbId));
+  const [playing, setPlaying] = useState(false);
+  const adder = useListAdder(item, rowProps);
+  const { profiles } = rowProps;
+
+  useEffect(() => {
+    let live = true;
+    if (item.tmdbId) rowProps.getDetails(item).then((d) => { if (live) { setInfo({ ...item, ...d }); setLoading(false); } });
+    return () => { live = false; };
+  }, [item]);
+
+  // Escape closes just this screen, not the search behind it
+  useEffect(() => {
+    const k = (e) => { if (e.key === 'Escape') { e.stopImmediatePropagation(); onClose(); } };
+    window.addEventListener('keydown', k, true);
+    return () => window.removeEventListener('keydown', k, true);
+  }, [onClose]);
+
+  const tv = typeOf(info) === 'tv';
+  const facts = [tv ? 'Series' : 'Film', info.year, tv ? seasonsLabel(info.seasons) : runtimeLabel(info.runtime)].filter(Boolean).join(', ');
+
+  return (
+    <div className="fixed inset-0 z-50 bg-ink overflow-y-auto" role="dialog" aria-modal="true" aria-label={info.title}>
+      <div className="max-w-lg mx-auto px-5 pt-4 pb-safe">
+        <button onClick={onClose} className="btn-ghost pl-0 mb-2">‹ Back to results</button>
+        <div className="flex gap-4">
+          <Poster path={info.poster} title={info.title} size="w342" className="w-28 h-[168px] rounded-xl shrink-0" />
+          <div className="min-w-0">
+            <h2 className="font-display text-2xl leading-tight">{info.title}</h2>
+            <p className="text-sm text-dim mt-1.5">{facts}</p>
+            {info.genres && info.genres.length > 0 && <p className="text-sm text-dim">{info.genres.join(', ')}</p>}
+            {info.score && <p className="text-sm mt-2"><span className="text-clay">★</span> {info.score} <span className="text-dim">on TMDB</span></p>}
+          </div>
+        </div>
+
+        {info.tagline && <p className="font-display text-lg leading-snug mt-5">{info.tagline}</p>}
+        {info.overview ? <p className="text-sm leading-relaxed text-paper/85 mt-3">{info.overview}</p>
+          : loading ? <p className="text-sm text-dim mt-4">Loading details…</p>
+          : <p className="text-sm text-dim mt-4">No description on TMDB.</p>}
+
+        <div className="mt-5">
+          {playing && info.trailerKey
+            ? <div className="relative w-full rounded-xl overflow-hidden bg-black" style={{ aspectRatio: '16 / 9' }}>
+                <iframe className="absolute inset-0 w-full h-full" title={`${info.title} trailer`}
+                  src={`https://www.youtube-nocookie.com/embed/${info.trailerKey}?autoplay=1&playsinline=1&rel=0`}
+                  allow="autoplay; encrypted-media; picture-in-picture; fullscreen" allowFullScreen />
+              </div>
+            : info.trailerKey
+              ? <button onClick={() => setPlaying(true)} className="pill-quiet w-full py-3">▶ Play trailer</button>
+              : !loading && <TrailerLink item={info} className="pill-quiet block text-center w-full py-3" />}
+          {playing && info.trailerKey && <a href={trailerUrl(info)} target="_blank" rel="noopener noreferrer" className="btn-ghost block text-center text-sm mt-1">Open in YouTube instead</a>}
+        </div>
+
+        {(info.makers && info.makers.length > 0) && <p className="text-sm mt-5"><span className="text-dim">{tv ? 'Created by' : 'Directed by'}</span> {info.makers.join(', ')}</p>}
+        {(info.cast && info.cast.length > 0) && <p className="text-sm mt-1.5"><span className="text-dim">Starring</span> {info.cast.join(', ')}</p>}
+
+        <div className="border-t border-line mt-6 pt-5">
+          {profiles.length === 1
+            ? <button disabled={adder.count > 0 || !!adder.busy} onClick={() => adder.add(profiles[0].id)} className={adder.count ? 'pill-done w-full py-3' : 'pill w-full py-3'}>
+                {adder.count ? `On ${profiles[0].name}` : adder.busy ? 'Adding…' : `Add to ${profiles[0].name}`}
+              </button>
+            : <>
+                <p className="text-sm text-dim mb-2">Add to a list</p>
+                <ListChips item={item} profiles={profiles} adder={adder} />
+              </>}
+        </div>
+        <p className="text-xs text-dim pt-6">Details from TMDB.</p>
+      </div>
+    </div>
+  );
+}
+
+// One result. Tap the poster or title for details; Add puts it on a list (or opens the list chooser)
+function ResultRow({ item, ...rowProps }) {
+  const { profiles } = rowProps;
+  const [open, setOpen] = useState(false);
+  const [details, setDetails] = useState(false);
+  const adder = useListAdder(item, rowProps);
+  const { count, busy } = adder;
+  const single = profiles.length === 1;
   return (
     <li className="border-b border-line">
       <div className="flex items-center gap-3 py-2.5">
-        <Poster path={item.poster} title={item.title} size="w92" className="w-10 h-[60px] rounded-md shrink-0" />
-        <div className="flex-1 min-w-0">
-          <p className="font-semibold truncate">{item.title}</p>
-          <p className="text-sm text-dim truncate">{[kindLabel(item), item.role].filter(Boolean).join(', ')}</p>
-          {!single && count > 0 && <p className="text-xs text-sage">On {count} of {profiles.length} lists</p>}
-        </div>
+        <button onClick={() => setDetails(true)} className="flex items-center gap-3 flex-1 min-w-0 text-left" aria-label={`Details for ${item.title}`}>
+          <Poster path={item.poster} title={item.title} size="w92" className="w-10 h-[60px] rounded-md shrink-0" />
+          <span className="min-w-0">
+            <span className="block font-semibold truncate">{item.title}</span>
+            <span className="block text-sm text-dim truncate">{[kindLabel(item), item.role].filter(Boolean).join(', ')}</span>
+            {!single && count > 0 && <span className="block text-xs text-sage">On {count} of {profiles.length} lists</span>}
+          </span>
+        </button>
         {single
-          ? <button disabled={count > 0 || !!busy} onClick={() => add(profiles[0].id)} className={count ? 'pill-done' : 'pill'}>{count ? 'Added' : busy ? 'Adding…' : 'Add'}</button>
+          ? <button disabled={count > 0 || !!busy} onClick={() => adder.add(profiles[0].id)} className={count ? 'pill-done' : 'pill'}>{count ? 'Added' : busy ? 'Adding…' : 'Add'}</button>
           : <button onClick={() => setOpen((o) => !o)} aria-expanded={open} className={open ? 'pill-quiet' : 'pill'}>{open ? 'Done' : 'Add to list'}</button>}
       </div>
-      {open && (
-        <div className="pb-3 pl-[52px] flex flex-wrap gap-2" role="group" aria-label={`Add ${item.title} to a list`}>
-          {profiles.map((p) => {
-            const on = onList(p.id);
-            return (
-              <button key={p.id} disabled={on || busy === p.id} onClick={() => add(p.id)} className={on ? 'chip chip-on' : 'chip'}>
-                {on ? '✓ ' : '+ '}{p.name}{busy === p.id ? '…' : ''}
-              </button>
-            );
-          })}
-        </div>
-      )}
+      {open && <div className="pb-3 pl-[52px]"><ListChips item={item} profiles={profiles} adder={adder} /></div>}
+      {details && <DetailView item={item} rowProps={rowProps} onClose={() => setDetails(false)} />}
     </li>
   );
 }

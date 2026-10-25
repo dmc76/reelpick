@@ -1,6 +1,6 @@
 // ReelPick service worker: makes the app installable and lets it open offline.
 // Bump VERSION to force phones to refresh their cached copy.
-const VERSION = 'reelpick-v5';
+const VERSION = 'reelpick-v6';
 const SHARE_CACHE = 'reelpick-share';
 const SHELL = ['/', '/index.html', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png'];
 

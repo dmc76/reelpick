@@ -43,10 +43,17 @@ export const detail = (m, mediaType) => ({
   collectionId: (m.belongs_to_collection && m.belongs_to_collection.id) || null,
   collectionName: (m.belongs_to_collection && m.belongs_to_collection.name) || null,
   collectionChecked: mediaType === 'movie',
+  // Shown on the details screen before you add a title
+  tagline: m.tagline || '',
+  score: m.vote_count >= 20 && m.vote_average ? Math.round(m.vote_average * 10) / 10 : null,
+  cast: ((m.credits && m.credits.cast) || []).slice(0, 6).map((c) => c.name),
+  makers: mediaType === 'tv'
+    ? (m.created_by || []).map((c) => c.name).slice(0, 3)
+    : ((m.credits && m.credits.crew) || []).filter((c) => c.job === 'Director').map((c) => c.name).slice(0, 3),
 });
 
 export const detailsPath = (id, mediaType) =>
-  `/${mediaType === 'tv' ? 'tv' : 'movie'}/${encodeURIComponent(id)}?language=en-GB&append_to_response=videos&include_video_language=en,null`;
+  `/${mediaType === 'tv' ? 'tv' : 'movie'}/${encodeURIComponent(id)}?language=en-GB&append_to_response=videos,credits&include_video_language=en,null`;
 
 export const json = (body, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
