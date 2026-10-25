@@ -1,6 +1,7 @@
 // ReelPick service worker: makes the app installable and lets it open offline.
 // Bump VERSION to force phones to refresh their cached copy.
-const VERSION = 'reelpick-v4';
+const VERSION = 'reelpick-v5';
+const SHARE_CACHE = 'reelpick-share';
 const SHELL = ['/', '/index.html', '/manifest.webmanifest', '/icons/icon-192.png', '/icons/icon-512.png'];
 
 self.addEventListener('install', (e) => {
@@ -9,15 +10,36 @@ self.addEventListener('install', (e) => {
 
 self.addEventListener('activate', (e) => {
   e.waitUntil(
-    caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== VERSION).map((k) => caches.delete(k))))
+    caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== VERSION && k !== SHARE_CACHE).map((k) => caches.delete(k))))
       .then(() => self.clients.claim())
   );
 });
 
 self.addEventListener('fetch', (e) => {
   const req = e.request;
-  if (req.method !== 'GET') return;
   const url = new URL(req.url);
+
+  // Screenshots shared to ReelPick from the phone's Share menu: keep them, then open the app to read them
+  if (req.method === 'POST' && url.pathname === '/share-target') {
+    e.respondWith((async () => {
+      let count = 0, hasLink = false;
+      try {
+        const form = await req.formData();
+        const files = form.getAll('images').filter((f) => f && typeof f !== 'string' && /^image\//.test(f.type));
+        hasLink = Boolean(form.get('url') || form.get('text'));
+        const cache = await caches.open(SHARE_CACHE);
+        for (const k of await cache.keys()) await cache.delete(k);
+        for (const f of files.slice(0, 20)) {
+          await cache.put(`/shared/${count}`, new Response(f, { headers: { 'Content-Type': f.type } }));
+          count += 1;
+        }
+      } catch {}
+      return Response.redirect(`/?shared=${count}${hasLink && !count ? '&link=1' : ''}`, 303);
+    })());
+    return;
+  }
+
+  if (req.method !== 'GET') return;
 
   // Search and suggestions always go to the network
   if (url.pathname.startsWith('/.netlify/functions/')) return;

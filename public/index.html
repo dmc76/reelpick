@@ -437,8 +437,116 @@ function GenreBrowse({ rowProps, initialKind = 'movie' }) {
   );
 }
 
-function AddSheet({ profiles, filmsByProfile, activeId, view, onAdd, onClose }) {
-  const [mode, setMode] = useState('title');
+/* ---------- import films from screenshots ---------- */
+// Shrinks a screenshot to a JPEG small enough to send quickly
+async function shrinkImage(file, maxSide = 1400) {
+  const url = URL.createObjectURL(file);
+  try {
+    const img = await new Promise((ok, fail) => { const i = new Image(); i.onload = () => ok(i); i.onerror = fail; i.src = url; });
+    const scale = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(img.naturalWidth * scale);
+    canvas.height = Math.round(img.naturalHeight * scale);
+    canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+    return canvas.toDataURL('image/jpeg', 0.82).split(',')[1];
+  } finally { URL.revokeObjectURL(url); }
+}
+
+// Screenshots handed over by the phone's Share menu (stored by the service worker)
+async function takeSharedFiles(count) {
+  const files = [];
+  try {
+    const cache = await caches.open('reelpick-share');
+    for (let i = 0; i < count; i++) {
+      const res = await cache.match(`/shared/${i}`);
+      if (res) files.push(new File([await res.blob()], `screenshot-${i + 1}.jpg`, { type: res.headers.get('Content-Type') || 'image/jpeg' }));
+      await cache.delete(`/shared/${i}`);
+    }
+  } catch {}
+  return files;
+}
+
+function ScanPanel({ rowProps, activeProfile, initialFiles, linkOnly }) {
+  const [state, setState] = useState({ status: 'idle', done: 0, total: 0, results: [], unmatched: [], failed: 0 });
+  const [addingAll, setAddingAll] = useState(false);
+  const inputRef = useRef(null);
+  const started = useRef(false);
+
+  const scan = async (fileList) => {
+    const files = [...fileList].filter((f) => /^image\//.test(f.type)).slice(0, 20);
+    if (!files.length) return;
+    setState({ status: 'working', done: 0, total: files.length, results: [], unmatched: [], failed: 0 });
+    let next = 0;
+    const worker = async () => {
+      while (next < files.length) {
+        const file = files[next++];
+        try {
+          const data = await shrinkImage(file);
+          const r = await api('scan', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ image: { media_type: 'image/jpeg', data } }) });
+          setState((s) => {
+            const have = new Set(s.results.map(resultKey));
+            const fresh = (r.results || []).filter((x) => !have.has(resultKey(x)));
+            return { ...s, done: s.done + 1, results: [...s.results, ...fresh], unmatched: [...new Set([...s.unmatched, ...(r.unmatched || [])])] };
+          });
+        } catch {
+          setState((s) => ({ ...s, done: s.done + 1, failed: s.failed + 1 }));
+        }
+      }
+    };
+    await Promise.all([worker(), worker(), worker()]); // three screenshots at a time
+    setState((s) => ({ ...s, status: 'done' }));
+  };
+
+  useEffect(() => {
+    if (started.current || !initialFiles || !initialFiles.length) return;
+    started.current = true;
+    scan(initialFiles);
+  }, [initialFiles]);
+
+  const { status, done, total, results, unmatched, failed } = state;
+  const onActive = (r) => (rowProps.filmsByProfile[activeProfile.id] || []).some((f) => sameFilm(f, r));
+  const notYetAdded = results.filter((r) => !onActive(r));
+  const addAll = async () => {
+    setAddingAll(true);
+    for (const r of notYetAdded) rowProps.onAdd(await rowProps.getDetails(r), activeProfile.id);
+    setAddingAll(false);
+  };
+
+  return (
+    <div>
+      {linkOnly && status === 'idle' && (
+        <p className="text-sm text-clay leading-relaxed mb-3">ReelPick can't open Instagram links. Take a screenshot of the post instead and share that.</p>
+      )}
+      <p className="text-sm text-dim leading-relaxed mb-3">
+        Choose screenshots of posts, posters or lists, and ReelPick will pick out the films and series in them.
+        You can also share screenshots straight from your gallery to ReelPick on Android.
+      </p>
+      <input ref={inputRef} type="file" accept="image/*" multiple className="hidden" onChange={(e) => { scan(e.target.files); e.target.value = ''; }} />
+      <button onClick={() => inputRef.current && inputRef.current.click()} disabled={status === 'working'} className="pill w-full py-3">
+        {status === 'working' ? `Reading ${Math.min(done + 1, total)} of ${total}…` : status === 'done' ? 'Choose more screenshots' : 'Choose screenshots'}
+      </button>
+
+      {status === 'done' && (
+        <p className="text-sm mt-4">
+          {results.length ? `Found ${results.length} ${results.length === 1 ? 'title' : 'titles'}.` : 'No films or series found in those screenshots.'}
+          {failed > 0 && <span className="text-clay"> {failed === 1 ? '1 screenshot' : `${failed} screenshots`} couldn't be read.</span>}
+        </p>
+      )}
+      {notYetAdded.length > 1 && (
+        <button onClick={addAll} disabled={addingAll} className="pill-quiet w-full py-3 mt-3">
+          {addingAll ? 'Adding…' : `Add all ${notYetAdded.length} to ${activeProfile.name}`}
+        </button>
+      )}
+      <ResultList items={results} rowProps={rowProps} />
+      {status === 'done' && unmatched.length > 0 && (
+        <p className="text-xs text-dim mt-3">Spotted but not found on TMDB: {unmatched.join(', ')}. You can add these on the Title tab.</p>
+      )}
+    </div>
+  );
+}
+
+function AddSheet({ profiles, filmsByProfile, activeId, view, onAdd, onClose, shared }) {
+  const [mode, setMode] = useState(shared ? 'scan' : 'title');
   const cache = useRef({});
   // Fetch full details (runtime, genres, trailer) once per title, however many lists it goes on
   const getDetails = async (r) => {
@@ -454,12 +562,13 @@ function AddSheet({ profiles, filmsByProfile, activeId, view, onAdd, onClose }) 
   return (
     <Sheet title="Find something to watch" onClose={onClose}>
       <div className="chips mb-3" role="tablist">
-        {[['title', 'Title'], ['person', 'Actor or director'], ['genre', 'Genre']].map(([k, label]) =>
+        {[['title', 'Title'], ['person', 'Actor or director'], ['genre', 'Genre'], ['scan', 'Screenshots']].map(([k, label]) =>
           <button key={k} role="tab" aria-selected={mode === k} className={mode === k ? 'chip chip-on' : 'chip'} onClick={() => setMode(k)}>{label}</button>)}
       </div>
       {mode === 'title' && <TitleSearch rowProps={rowProps} activeProfile={activeProfile} onAddTyped={(f) => onAdd(f, activeProfile.id)} />}
       {mode === 'person' && <PersonSearch rowProps={rowProps} />}
       {mode === 'genre' && <GenreBrowse rowProps={rowProps} initialKind={view} />}
+      {mode === 'scan' && <ScanPanel rowProps={rowProps} activeProfile={activeProfile} initialFiles={shared && shared.files} linkOnly={shared && shared.linkOnly} />}
       <p className="text-xs text-dim pt-4">Details, posters and trailers come from TMDB.</p>
     </Sheet>
   );
@@ -717,6 +826,16 @@ function App() {
   const [watchedSort, setWatchedSort] = useState('recent');
   const [shortlists, setShortlists] = useState({});
 
+  // Opened from the phone's Share menu: collect the screenshots and go straight to the Screenshots tab
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    if (!q.has('shared')) return;
+    const count = Number(q.get('shared')) || 0;
+    const linkOnly = q.get('link') === '1';
+    window.history.replaceState(null, '', '/');
+    takeSharedFiles(count).then((files) => setSheet({ type: 'add', shared: { files, linkOnly } }));
+  }, []);
+
   const pid = data.activeId;
   const profile = data.profiles.find((p) => p.id === pid) || data.profiles[0];
   const view = data.view === 'tv' ? 'tv' : 'movie'; // Films and Series are separate lists
@@ -895,7 +1014,7 @@ function App() {
         </div>
       </div>
 
-      {sheet && sheet.type === 'add' && <AddSheet profiles={data.profiles} filmsByProfile={data.films} activeId={pid} view={view} onAdd={(f, profileId) => addFilm(f, {}, profileId)} onClose={closeAdd} />}
+      {sheet && sheet.type === 'add' && <AddSheet profiles={data.profiles} filmsByProfile={data.films} activeId={pid} view={view} shared={sheet.shared} onAdd={(f, profileId) => addFilm(f, {}, profileId)} onClose={closeAdd} />}
       {sheet && sheet.type === 'pick' && <PickSheet films={toWatch} kind={view}
         shortlist={(shortlists[`${pid}:${view}`] || []).filter((id) => toWatch.some((f) => f.id === id))}
         setShortlist={(fn) => setShortlists((s) => { const k = `${pid}:${view}`; const cur = (s[k] || []).filter((id) => toWatch.some((f) => f.id === id)); return { ...s, [k]: typeof fn === 'function' ? fn(cur) : fn }; })}

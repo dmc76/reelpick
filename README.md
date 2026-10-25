@@ -32,3 +32,10 @@ The app is a PWA (manifest, service worker and icons are in `public`).
 Your lists live on the device, so they open offline; search and suggestions need a connection.
 After changing the app, bump `VERSION` in `public/sw.js` if a phone keeps showing the old version.
 
+
+## Importing from screenshots
+- In the app: Add > Screenshots, then choose one or more screenshots.
+- On Android, once ReelPick is installed, it also appears in the phone's Share menu for images.
+  If it doesn't show after an update, uninstall ReelPick from the home screen and install it again.
+- `netlify/functions/scan.mjs` reads each screenshot with Claude (model set by `SCAN_MODEL`, default `claude-haiku-5-5`)
+  and matches the titles on TMDB. It uses the existing ANTHROPIC_API_KEY and TMDB_API_KEY.
